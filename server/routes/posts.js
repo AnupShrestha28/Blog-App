@@ -4,11 +4,13 @@ const router = express.Router();
 const Post = require("../models/Post");
 const Comment = require("../models/Comment");
 const verifyToken = require("../middleware/verifyToken");
+const logger = require("../utils/logger");
 
-// Middleware to handle validation errors
+// Middleware to handle validation errors and logging
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    logger.error("Validation Error: ", errors.array());
     return res.status(400).json({ errors: errors.array() });
   }
   next();
@@ -56,27 +58,10 @@ const handleValidationErrors = (req, res, next) => {
  *     responses:
  *       200:
  *         description: The newly created blog post
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 _id:
- *                   type: string
- *                 title:
- *                   type: string
- *                 desc:
- *                   type: string
- *                 username:
- *                   type: string
- *                 userId:
- *                   type: string
- *                 photo:
- *                   type: string
- *                 categories:
- *                   type: array
- *                   items:
- *                     type: string
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
  */
 router.post(
   "/create",
@@ -90,14 +75,13 @@ router.post(
     body("categories")
       .optional()
       .isArray()
-      .withMessage("Categories must be an array of strings"),
+      .withMessage("Categories must be an array"),
     handleValidationErrors,
   ],
   async (req, res) => {
     try {
       const { title, desc, username, userId, photo, categories } = req.body;
 
-      // Create new Post instance
       const newPost = new Post({
         title,
         desc,
@@ -106,10 +90,11 @@ router.post(
         photo,
         categories,
       });
-
       const savedPost = await newPost.save();
+      logger.info(`New post created by user ${userId}: ${title}`);
       res.status(200).json(savedPost);
     } catch (err) {
+      logger.error("Error creating post: ", err);
       res.status(500).json({ error: "Post creation failed", details: err });
     }
   }
@@ -138,13 +123,17 @@ router.post(
  *             properties:
  *               title:
  *                 type: string
+ *                 description: New title of the post
  *               desc:
  *                 type: string
+ *                 description: New description of the post
  *     responses:
  *       200:
  *         description: The updated blog post
+ *       400:
+ *         description: Validation error
  *       500:
- *         description: Post update failed
+ *         description: Internal server error
  */
 router.put(
   "/:id",
@@ -165,8 +154,10 @@ router.put(
         { $set: req.body },
         { new: true }
       );
+      logger.info(`Post updated: ${req.params.id}`);
       res.status(200).json(updatedPost);
     } catch (err) {
+      logger.error("Error updating post: ", err);
       res.status(500).json({ error: "Post update failed", details: err });
     }
   }
@@ -188,9 +179,11 @@ router.put(
  *         description: The blog post ID
  *     responses:
  *       200:
- *         description: The post was deleted successfully
+ *         description: Post has been deleted
+ *       400:
+ *         description: Validation error
  *       500:
- *         description: Post deletion failed
+ *         description: Internal server error
  */
 router.delete(
   "/:id",
@@ -203,8 +196,10 @@ router.delete(
     try {
       await Post.findByIdAndDelete(req.params.id);
       await Comment.deleteMany({ postId: req.params.id });
+      logger.info(`Post deleted: ${req.params.id}`);
       res.status(200).json("Post has been deleted!");
     } catch (err) {
+      logger.error("Error deleting post: ", err);
       res.status(500).json({ error: "Post deletion failed", details: err });
     }
   }
@@ -226,18 +221,11 @@ router.delete(
  *         description: The blog post ID
  *     responses:
  *       200:
- *         description: The blog post details
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 _id:
- *                   type: string
- *                 title:
- *                   type: string
- *                 desc:
- *                   type: string
+ *         description: Blog post details
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
  */
 router.get(
   "/:id",
@@ -248,8 +236,10 @@ router.get(
   async (req, res) => {
     try {
       const post = await Post.findById(req.params.id);
+      logger.info(`Post retrieved: ${req.params.id}`);
       res.status(200).json(post);
     } catch (err) {
+      logger.error("Error retrieving post: ", err);
       res.status(500).json({ error: "Post retrieval failed", details: err });
     }
   }
@@ -267,23 +257,14 @@ router.get(
  *         name: search
  *         schema:
  *           type: string
- *         description: Search by title
+ *         description: Search query for filtering posts by title
  *     responses:
  *       200:
- *         description: A list of blog posts
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   _id:
- *                     type: string
- *                   title:
- *                     type: string
- *                   desc:
- *                     type: string
+ *         description: List of blog posts
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
  */
 router.get(
   "/",
@@ -299,8 +280,10 @@ router.get(
       const query = req.query;
       const searchFilter = { title: { $regex: query.search, $options: "i" } };
       const posts = await Post.find(query.search ? searchFilter : null);
+      logger.info("All posts retrieved");
       res.status(200).json(posts);
     } catch (err) {
+      logger.error("Error retrieving posts: ", err);
       res.status(500).json({ error: "Posts retrieval failed", details: err });
     }
   }
@@ -322,7 +305,11 @@ router.get(
  *         description: The user ID
  *     responses:
  *       200:
- *         description: A list of blog posts by the user
+ *         description: List of blog posts by the user
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Internal server error
  */
 router.get(
   "/user/:userId",
@@ -333,11 +320,11 @@ router.get(
   async (req, res) => {
     try {
       const posts = await Post.find({ userId: req.params.userId });
+      logger.info(`Posts retrieved for user: ${req.params.userId}`);
       res.status(200).json(posts);
     } catch (err) {
-      res
-        .status(500)
-        .json({ error: "User posts retrieval failed", details: err });
+      logger.error("Error retrieving user's posts: ", err);
+      res.status(500).json({ error: "Posts retrieval failed", details: err });
     }
   }
 );

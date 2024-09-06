@@ -3,6 +3,7 @@ const { body, validationResult } = require("express-validator");
 const router = express.Router();
 const Comment = require("../models/Comment");
 const verifyToken = require("../middleware/verifyToken");
+const logger = require("../utils/logger");
 
 // Validation schema for creating a comment
 const createCommentValidation = [
@@ -80,14 +81,17 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      logger.error("Validation Error in creating comment: ", errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
     try {
       const newComment = new Comment(req.body);
       const savedComment = await newComment.save();
+      logger.info(`Comment created successfully: ${savedComment._id}`);
       res.status(200).json(savedComment);
     } catch (err) {
+      logger.error("Error creating comment: ", err);
       res.status(500).json(err);
     }
   }
@@ -124,6 +128,7 @@ router.post(
 router.put("/:id", verifyToken, updateCommentValidation, async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    logger.error("Validation Error in updating comment: ", errors.array());
     return res.status(400).json({ errors: errors.array() });
   }
 
@@ -133,8 +138,10 @@ router.put("/:id", verifyToken, updateCommentValidation, async (req, res) => {
       { $set: req.body },
       { new: true }
     );
+    logger.info(`Comment updated successfully: ${req.params.id}`);
     res.status(200).json(updatedComment);
   } catch (err) {
+    logger.error("Error updating comment: ", err);
     res.status(500).json(err);
   }
 });
@@ -160,8 +167,10 @@ router.put("/:id", verifyToken, updateCommentValidation, async (req, res) => {
 router.delete("/:id", verifyToken, async (req, res) => {
   try {
     await Comment.findByIdAndDelete(req.params.id);
+    logger.info(`Comment deleted successfully: ${req.params.id}`);
     res.status(200).json("Comment has been deleted!");
   } catch (err) {
+    logger.error("Error deleting comment: ", err);
     res.status(500).json(err);
   }
 });
@@ -193,8 +202,10 @@ router.delete("/:id", verifyToken, async (req, res) => {
 router.get("/post/:postId", async (req, res) => {
   try {
     const comments = await Comment.find({ postId: req.params.postId });
+    logger.info(`Fetched comments for post ID: ${req.params.postId}`);
     res.status(200).json(comments);
   } catch (err) {
+    logger.error("Error fetching comments: ", err);
     res.status(500).json(err);
   }
 });

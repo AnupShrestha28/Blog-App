@@ -6,11 +6,13 @@ const bcrypt = require("bcrypt");
 const Post = require("../models/Post");
 const Comment = require("../models/Comment");
 const verifyToken = require("../middleware/verifyToken");
+const logger = require("../utils/logger");
 
-// Middleware to handle validation errors
+// Middleware to handle validation errors and logging
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    logger.error("Validation Error: ", errors.array());
     return res.status(400).json({ errors: errors.array() });
   }
   next();
@@ -74,9 +76,11 @@ router.put(
         { $set: req.body },
         { new: true }
       );
+      logger.info(`User updated: ${req.params.id}`);
       res.status(200).json(updatedUser);
     } catch (err) {
-      res.status(500).json(err);
+      logger.error("Error updating user: ", err);
+      res.status(500).json({ error: "User update failed", details: err });
     }
   }
 );
@@ -112,14 +116,19 @@ router.delete(
   async (req, res) => {
     try {
       const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json("User not found");
+      if (!user) {
+        logger.warn(`User not found: ${req.params.id}`);
+        return res.status(404).json("User not found");
+      }
 
       await User.findByIdAndDelete(req.params.id);
       await Post.deleteMany({ userId: req.params.id });
       await Comment.deleteMany({ userId: req.params.id });
+      logger.info(`User deleted: ${req.params.id}`);
       res.status(200).json("User has been deleted!");
     } catch (err) {
-      res.status(500).json(err);
+      logger.error("Error deleting user: ", err);
+      res.status(500).json({ error: "User deletion failed", details: err });
     }
   }
 );
@@ -156,12 +165,17 @@ router.get(
   async (req, res) => {
     try {
       const user = await User.findById(req.params.id);
-      if (!user) return res.status(404).json("User not found");
+      if (!user) {
+        logger.warn(`User not found: ${req.params.id}`);
+        return res.status(404).json("User not found");
+      }
 
       const { password, ...info } = user._doc;
+      logger.info(`User retrieved: ${req.params.id}`);
       res.status(200).json(info);
     } catch (err) {
-      res.status(500).json(err);
+      logger.error("Error retrieving user: ", err);
+      res.status(500).json({ error: "User retrieval failed", details: err });
     }
   }
 );

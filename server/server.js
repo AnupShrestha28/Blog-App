@@ -6,6 +6,8 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const cookieParser = require("cookie-parser");
+const morgan = require("morgan"); // For logging HTTP requests
+const logger = require("./utils/logger"); // Winston logger for audit logs
 const authRoute = require("./routes/auth");
 const userRoute = require("./routes/users");
 const postRoute = require("./routes/posts");
@@ -24,9 +26,9 @@ app.use("/swagger", swaggerUI.serve, swaggerUI.setup(jsDoc));
 const connectDB = async () => {
   try {
     await mongoose.connect(process.env.MONGO_URL);
-    console.log("Database connected successfully!");
+    logger.info("Database connected successfully!"); // Log DB connection with Winston
   } catch (err) {
-    console.error("Database connection failed:", err);
+    logger.error("Database connection failed:", err); // Log DB connection error
   }
 };
 
@@ -35,6 +37,15 @@ app.use(express.json());
 app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(cookieParser());
 app.use("/images", express.static(path.join(__dirname, "/images")));
+
+// Morgan middleware to log incoming requests
+app.use(
+  morgan("combined", {
+    stream: {
+      write: (message) => logger.info(message.trim()), 
+    },
+  })
+);
 
 // Routes
 app.use("/api/auth", authRoute);
@@ -48,7 +59,7 @@ const storage = multer.diskStorage({
     cb(null, "images");
   },
   filename: (req, file, cb) => {
-    cb(null, req.body.img); // Use a meaningful filename here if necessary
+    cb(null, req.body.img);
   },
 });
 
@@ -60,5 +71,5 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
 // Start server
 app.listen(process.env.PORT, () => {
   connectDB();
-  console.log("App running on port " + process.env.PORT);
+  logger.info(`App running on port ${process.env.PORT}`);
 });

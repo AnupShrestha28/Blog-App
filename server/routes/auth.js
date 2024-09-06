@@ -4,6 +4,7 @@ const router = express.Router();
 const User = require("../models/User");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const logger = require("../utils/logger");
 
 // Validation schema for registration
 const registerValidation = [
@@ -24,6 +25,7 @@ const loginValidation = [
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    logger.error("Validation Error: ", errors.array());
     return res.status(400).json({ errors: errors.array() });
   }
   next();
@@ -84,6 +86,9 @@ router.post(
         $or: [{ username }, { email }],
       });
       if (existingUser) {
+        logger.warn(
+          "Registration failed: Username or email already registered"
+        );
         return res
           .status(400)
           .json({ message: "Username or email is already registered" });
@@ -93,8 +98,10 @@ router.post(
       const hashedPassword = await bcrypt.hash(password, salt);
       const newUser = new User({ username, email, password: hashedPassword });
       const savedUser = await newUser.save();
+      logger.info(`New user registered: ${email}`);
       res.status(201).json(savedUser);
     } catch (err) {
+      logger.error("Error registering user: ", err);
       res.status(500).json(err);
     }
   }
@@ -133,12 +140,14 @@ router.post(
       const user = await User.findOne({ email });
 
       if (!user) {
+        logger.warn("Login failed: User not found with email ", email);
         return res.status(404).json("User not found!");
       }
 
       const match = await bcrypt.compare(password, user.password);
 
       if (!match) {
+        logger.warn("Login failed: Incorrect password for email ", email);
         return res.status(401).json("Wrong credentials!");
       }
 
@@ -149,8 +158,10 @@ router.post(
       );
 
       const { password: userPassword, ...info } = user._doc;
+      logger.info(`User logged in successfully: ${email}`);
       res.cookie("token", token).status(200).json(info);
     } catch (err) {
+      logger.error("Error logging in user: ", err);
       res.status(500).json(err);
     }
   }
@@ -163,7 +174,9 @@ router.get("/logout", async (req, res) => {
       .clearCookie("token", { sameSite: "none", secure: true })
       .status(200)
       .send("User logged out successfully!");
+    logger.info("User logged out successfully");
   } catch (err) {
+    logger.error("Error logging out user: ", err);
     res.status(500).json(err);
   }
 });
@@ -173,8 +186,10 @@ router.get("/refetch", (req, res) => {
   const token = req.cookies.token;
   jwt.verify(token, process.env.SECRET, {}, (err, data) => {
     if (err) {
+      logger.warn("Token verification failed: ", err);
       return res.status(404).json(err);
     }
+    logger.info("User refetched successfully");
     res.status(200).json(data);
   });
 });
